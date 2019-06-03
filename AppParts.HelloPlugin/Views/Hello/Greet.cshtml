@@ -1,0 +1,9 @@
+﻿@model string
+
+@using Humanizer
+
+@{
+    ViewData["Title"] = "Hello Plugin";
+}
+
+<div>Hello @Model! @DateTime.Now.Humanize()</div>
