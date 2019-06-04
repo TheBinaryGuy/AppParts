@@ -55,7 +55,6 @@ namespace AppParts.App.Controllers
                 {
                     return StatusCode(500);
                 }
-                return StatusCode(500);
             }
             return BadRequest();
         }
