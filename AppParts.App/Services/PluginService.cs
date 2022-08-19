@@ -1,95 +1,92 @@
-using System;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.Loader;
 using System.Threading.Tasks;
-using AppParts.App.Providers;
+using AppParts.App.Helpers;
 using AppParts.App.ViewModels;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 
-public class PluginService : IPluginService
+namespace AppParts.App.Services
 {
-    private readonly ApplicationPartManager _partManager;
-
-    public PluginService(ApplicationPartManager partManager)
+    public class PluginService : IPluginService
     {
-        _partManager = partManager;
-    }
+        private readonly ApplicationPartManager _partManager;
+        private readonly IWebHostEnvironment _env;
 
-    public async Task<bool> SaveAndExtractZip(PluginUploadViewModel model)
-    {
-        try
+        public PluginService(ApplicationPartManager partManager, IWebHostEnvironment env)
         {
-            string uploadedZip = Path.Combine("Zips", $"{model.PluginName}.zip");
-            using (var stream = new FileStream(uploadedZip, FileMode.Create))
-            {
-                await model.PluginZip.CopyToAsync(stream);
-            }
-            string zipDestDir = Path.Combine("Plugins", $"{model.PluginName}");
-            ZipFile.ExtractToDirectory(uploadedZip, zipDestDir, true);
-            File.Delete(uploadedZip);
-            return true;
-        }
-        catch { throw; }
-    }
-
-    public bool LoadPlugin(string pluginName)
-    {
-        var pluginDirectory = Path.Combine("Plugins", pluginName);
-
-        // Get path of all dlls in the plugin directory
-        var files = GetDllPaths(pluginDirectory, "*.dll").ToList();
-        var assembliesToLoad = new List<Assembly>();
-        foreach (var file in files)
-        {
-            assembliesToLoad.Add(AssemblyLoadContext.Default.LoadFromAssemblyPath(file));
+            _partManager = partManager;
+            _env = env;
         }
 
-        foreach (var assembly in assembliesToLoad)
+        public async Task<bool> SaveAndExtractPlugin(PluginUploadViewModel model)
         {
-            if (assembly.EscapedCodeBase.Contains(".Views.dll"))
-            {
-                // Add assembly to ApplicationParts assuming it's a compiled razor assembly as it ends with *.Views.dll
-                _partManager.ApplicationParts.Add(new CompiledRazorAssemblyPart(assembly));
-            }
-            else
-            {
-                // Add assembly to ApplicationParts assuming
-                _partManager.ApplicationParts.Add(new AssemblyPart(assembly));
-            }
-        }
-
-        return true;
-    }
-
-    private IEnumerable<string> GetDllPaths(string rootFolderPath, string fileSearchPattern)
-    {
-        Queue<string> pending = new Queue<string>();
-        pending.Enqueue(rootFolderPath);
-        string[] tmp;
-        while (pending.Count > 0)
-        {
-            rootFolderPath = pending.Dequeue();
             try
             {
-                tmp = Directory.GetFiles(rootFolderPath, fileSearchPattern);
+                var zipDirectory = Path.Combine(_env.ContentRootPath, "Zips");
+                Directory.CreateDirectory(zipDirectory);
+                string uploadedZip = Path.Combine(zipDirectory, $"{model.PluginName}.zip");
+                using (var stream = new FileStream(uploadedZip, FileMode.Create))
+                {
+                    await model.PluginZip.CopyToAsync(stream);
+                }
+                var pluginsDirectory = Path.Combine(_env.ContentRootPath, "Plugins");
+                Directory.CreateDirectory(pluginsDirectory);
+                string zipDestDir = Path.Combine(pluginsDirectory, $"{model.PluginName}");
+                ZipFile.ExtractToDirectory(uploadedZip, zipDestDir, true);
+                File.Delete(uploadedZip);
+                return true;
             }
-            catch (UnauthorizedAccessException)
+            catch { throw; }
+        }
+
+        public bool LoadPlugin(string pluginName)
+        {
+            var pluginDirectory = Path.Combine("Plugins", pluginName);
+
+            foreach (var file in FileSystemHelpers.GetDllPaths(pluginDirectory, "*.dll"))
             {
-                continue;
+                if (_partManager.ApplicationParts.FirstOrDefault(part => part.Name == Path.GetFileNameWithoutExtension(file)) == null)
+                {
+                    if (Path.GetFileName(file).Contains(".Views.dll"))
+                    {
+                        // Add assembly to ApplicationParts assuming it's a compiled razor assembly as it ends with *.Views.dll
+                        _partManager.ApplicationParts.Add(new CompiledRazorAssemblyPart(AssemblyLoadContext.Default.LoadFromAssemblyPath(file)));
+                    }
+                    else
+                    {
+                        // Add assembly to ApplicationParts assuming
+                        _partManager.ApplicationParts.Add(new AssemblyPart(AssemblyLoadContext.Default.LoadFromAssemblyPath(file)));
+                    }
+                }
             }
-            for (int i = 0; i < tmp.Length; i++)
+
+            return true;
+        }
+
+        public bool LoadAllPlugins(ApplicationPartManager appPartManager)
+        {
+            var pluginsDirectory = Path.Combine("Plugins");
+            foreach (var file in FileSystemHelpers.GetDllPaths(pluginsDirectory, "*.dll"))
             {
-                yield return Path.GetFullPath(tmp[i]);
+                if (_partManager.ApplicationParts.FirstOrDefault(part => part.Name == Path.GetFileNameWithoutExtension(file)) == null)
+                {
+                    if (Path.GetFileName(file).Contains(".Views.dll"))
+                    {
+                        // Add assembly to ApplicationParts assuming it's a compiled razor assembly as it ends with *.Views.dll
+                        appPartManager.ApplicationParts.Add(new CompiledRazorAssemblyPart(AssemblyLoadContext.Default.LoadFromAssemblyPath(file)));
+                    }
+                    else
+                    {
+                        // Add assembly to ApplicationParts assuming
+                        appPartManager.ApplicationParts.Add(new AssemblyPart(AssemblyLoadContext.Default.LoadFromAssemblyPath(file)));
+                    }
+                }
             }
-            tmp = Directory.GetDirectories(rootFolderPath);
-            for (int i = 0; i < tmp.Length; i++)
-            {
-                pending.Enqueue(tmp[i]);
-            }
+
+            return true;
         }
     }
 }

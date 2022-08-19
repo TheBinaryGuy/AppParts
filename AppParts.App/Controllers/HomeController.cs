@@ -6,8 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using AppParts.App.Providers;
 using System.IO;
-using Microsoft.AspNetCore.Http;
 using AppParts.App.ViewModels;
+using AppParts.App.Services;
 
 namespace AppParts.App.Controllers
 {
@@ -35,13 +35,13 @@ namespace AppParts.App.Controllers
         }
 
         [HttpPost("/plugins")]
-        public async Task<IActionResult> Add(PluginUploadViewModel model)
+        public async Task<IActionResult> Add([FromForm] PluginUploadViewModel model)
         {
             if (model.PluginZip.Length > 0)
             {
                 try
                 {
-                    if (await _pluginService.SaveAndExtractZip(model))
+                    if (await _pluginService.SaveAndExtractPlugin(model))
                     {
                         if (_pluginService.LoadPlugin(model.PluginName))
                         {
